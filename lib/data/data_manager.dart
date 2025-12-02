@@ -1,7 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/theme_info.dart';
-import '../models/sub_theme_info.dart';
+
+// --- MODÈLES (Simplifiés et intégrés ici) ---
+
+class ThemeInfo {
+  final String name;
+  ThemeInfo({required this.name});
+  factory ThemeInfo.fromFirestore(Map<String, dynamic> data) {
+    return ThemeInfo(name: data['name'] ?? 'Sans nom');
+  }
+}
+
+class SubThemeInfo {
+  final String name;
+  final String parentTheme;
+  SubThemeInfo({required this.name, required this.parentTheme});
+  factory SubThemeInfo.fromFirestore(Map<String, dynamic> data) {
+    return SubThemeInfo(
+      name: data['sousTheme'] ?? 'Sans nom',
+      parentTheme: data['theme'] ?? 'Sans thème',
+    );
+  }
+}
+
+// --- GESTIONNAIRE DE DONNÉES ---
 
 class DataManager with ChangeNotifier {
   DataManager._privateConstructor();
@@ -13,7 +35,6 @@ class DataManager with ChangeNotifier {
   List<ThemeInfo> themes = [];
   List<SubThemeInfo> subThemes = [];
 
-  // Charge les Thèmes et Sous-Thèmes au démarrage
   Future<void> loadAllData() async {
     if (_isReady) return;
     try {
@@ -22,49 +43,38 @@ class DataManager with ChangeNotifier {
         FirebaseFirestore.instance.collection('SousThemesStyles').get(),
       ]);
 
-      final themesSnapshot = responses[0];
-      final subThemesSnapshot = responses[1];
-
-      themes = themesSnapshot.docs
+      themes = responses[0].docs
           .map((doc) => ThemeInfo.fromFirestore(doc.data()))
           .toList()
         ..sort((a, b) => a.name.compareTo(b.name));
         
-      subThemes = subThemesSnapshot.docs
+      subThemes = responses[1].docs
           .map((doc) => SubThemeInfo.fromFirestore(doc.data()))
           .toList()
         ..sort((a, b) => a.name.compareTo(b.name));
       
       _isReady = true;
       notifyListeners();
-
     } catch (e) {
-      debugPrint("ERREUR CRITIQUE DATA MANAGER : $e");
+      debugPrint("ERREUR DATA : $e");
       rethrow; 
     }
   }
 
-  // --- NOUVELLES MÉTHODES POUR LA NAVIGATION ---
-
-  // 1. Récupérer les sous-thèmes d'un thème spécifique
   List<SubThemeInfo> getSubThemesFor(String themeName) {
     return subThemes.where((st) => st.parentTheme == themeName).toList();
   }
 
-  // 2. Récupérer les questions pour un thème et sous-thème donnés
   Future<List<Map<String, dynamic>>> getQuestions(String theme, String subTheme) async {
     try {
-      // ATTENTION : Vérifie bien que tes champs dans Firestore s'appellent exactement "Theme" et "Sous - thème"
-      // Si ta base utilise d'autres noms (ex: "theme", "subTheme"), modifie les chaînes ci-dessous.
       final snapshot = await FirebaseFirestore.instance
-          .collection('QuestionsStyles')
+          .collection('Questions')
           .where('Theme', isEqualTo: theme)
-          .where('Sous - thème', isEqualTo: subTheme) 
+          .where('sousTheme', isEqualTo: subTheme) 
           .get();
-
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-      debugPrint("Erreur lors de la récupération des questions : $e");
+      debugPrint("Erreur questions : $e");
       return [];
     }
   }
