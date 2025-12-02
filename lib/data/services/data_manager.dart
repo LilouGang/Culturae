@@ -42,8 +42,8 @@ class DataManager with ChangeNotifier {
       _isReady = true;
       notifyListeners();
 
-    } catch (e, s) {
-      print("ERREUR lors du chargement depuis Firestore : $e\n$s");
+    } catch (e) {
+      debugPrint("Erreur lors du chargement des données : $e");
     }
   }
 }
