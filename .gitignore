@@ -47,3 +47,6 @@ app.*.map.json
 
 # Fichier d'environnement local
 .env
+
+# Fichiers et dossiers du SDK Flutter
+/flutter/  <-- AJOUTE CETTE LIGNE
