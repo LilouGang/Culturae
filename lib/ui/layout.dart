@@ -3,6 +3,7 @@ import '../data/data_manager.dart';
 import 'quiz_page/quiz_page.dart';
 import 'profil_page/profil_page.dart';
 import 'stats_page/stats_page.dart';
+import 'contact_page/contact_page.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -12,51 +13,62 @@ class MainLayout extends StatefulWidget {
 }
 
 class _MainLayoutState extends State<MainLayout> {
-  // État de la sidebar
   bool _isSidebarCollapsed = false;
-  // Page actuelle (0 = Catégories/Jeu, 1 = Stats, 2 = Profil, 3 = Contact)
   int _selectedIndex = 0;
-
-  // Pour forcer la sélection d'un thème depuis le menu
   ThemeInfo? _forcedThemeSelection;
 
   void _onMenuSelect(int index) {
     setState(() {
       _selectedIndex = index;
-      _forcedThemeSelection = null; // Reset si on change d'onglet
+      _forcedThemeSelection = null;
     });
   }
 
   void _onThemeDirectSelect(ThemeInfo theme) {
     setState(() {
-      _selectedIndex = 0; // On force l'onglet Jeu
+      _selectedIndex = 0;
       _forcedThemeSelection = theme;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // Calcul de la largeur actuelle de la sidebar pour l'animation
+    final double sidebarWidth = _isSidebarCollapsed ? 80 : 280;
+
     return Scaffold(
-      body: Row(
+      // ON REMPLACE 'ROW' PAR 'STACK' POUR GÉRER LA PROFONDEUR (Z-INDEX)
+      body: Stack(
         children: [
-          // --- SIDEBAR ANIMÉE ---
+          // --- 1. LE CONTENU (ARRIÈRE-PLAN) ---
+          // On utilise AnimatedContainer pour ajuster la marge quand la sidebar bouge
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
-            width: _isSidebarCollapsed ? 80 : 280,
+            // C'est ici la magie : on laisse de la place à gauche pour la sidebar
+            padding: EdgeInsets.only(left: sidebarWidth), 
+            color: const Color(0xFFF8F9FE), // Fond global de l'app
+            child: _buildPageContent(),
+          ),
+
+          // --- 2. LA SIDEBAR (PREMIER PLAN) ---
+          // Dessinée APRÈS le contenu, donc son ombre passe PAR DESSUS le contenu
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            width: sidebarWidth,
+            height: double.infinity, // Prend toute la hauteur
             decoration: BoxDecoration(
               color: Colors.white,
+              // L'ombre se projette maintenant proprement sur le contenu à droite
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(4, 0))
+                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(4, 0))
               ],
             ),
             child: Column(
               children: [
-                // Header Sidebar (Logo + Toggle)
                 _buildSidebarHeader(),
                 const Divider(height: 1),
-                
-                // Menu Items
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.symmetric(vertical: 20),
@@ -68,14 +80,11 @@ class _MainLayoutState extends State<MainLayout> {
                         isActive: _selectedIndex == 0,
                         onTap: () => _onMenuSelect(0),
                       ),
-                      
-                      // Liste des thèmes (seulement si déployé et onglet catégories actif)
                       if (!_isSidebarCollapsed)
                         ...DataManager.instance.themes.map((t) => _ThemeSubItem(
                           label: t.name,
                           onTap: () => _onThemeDirectSelect(t),
                         )),
-
                       _SidebarItem(
                         icon: Icons.bar_chart_rounded,
                         label: "Statistiques",
@@ -100,18 +109,8 @@ class _MainLayoutState extends State<MainLayout> {
                     ],
                   ),
                 ),
-                
-                // Footer (User info simplifiée)
                 _buildSidebarFooter(),
               ],
-            ),
-          ),
-
-          // --- CONTENU PRINCIPAL ---
-          Expanded(
-            child: Container(
-              color: const Color(0xFFF8F9FE), // Gris très clair moderne
-              child: _buildPageContent(),
             ),
           ),
         ],
@@ -141,6 +140,7 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   Widget _buildSidebarFooter() {
+    // Petit fix : Gestion des débordements si le nom est long en mode réduit
     return Container(
       padding: const EdgeInsets.all(16),
       color: Colors.grey.shade50,
@@ -150,12 +150,15 @@ class _MainLayoutState extends State<MainLayout> {
             children: [
               const CircleAvatar(backgroundColor: Colors.blue, child: Icon(Icons.person, color: Colors.white)),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text("Invité", style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text("Niveau 1", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                ],
+              // Expanded pour éviter l'overflow horizontal
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text("Invité", style: TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                    Text("Niveau 1", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
               )
             ],
           ),
@@ -163,16 +166,15 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   Widget _buildPageContent() {
-    // Si on a cliqué sur un thème précis dans la sidebar, on le passe à la QuizPage
-    if (_selectedIndex == 0) {
-      return QuizPage(initialTheme: _forcedThemeSelection);
+    if (_selectedIndex == 0) return QuizPage(initialTheme: _forcedThemeSelection);
+    if (_selectedIndex == 1) {
+      return StatsPage(
+        onGoToLogin: () => _onMenuSelect(2), // 2 = Index de la page Profil
+      );
     }
-    if (_selectedIndex == 1)  return const StatsPage();
-    
-    // --- ICI LE CHANGEMENT ---
-    if (_selectedIndex == 2) return const ProfilPage(); // On appelle la nouvelle page !
-    
-    return const Center(child: Text("Page Contact (À venir)"));
+    if (_selectedIndex == 2) return const ProfilPage();
+    if (_selectedIndex == 3) return const ContactPage();
+    return const Center(child: Text("Page non trouvée"));
   }
 }
 
@@ -197,7 +199,7 @@ class _SidebarItem extends StatelessWidget {
           height: 50,
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: isActive ? Colors.blueAccent.withValues(alpha: 0.1) : Colors.transparent,
+            color: isActive ? Colors.blueAccent.withOpacity(0.1) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -207,7 +209,7 @@ class _SidebarItem extends StatelessWidget {
               Icon(icon, color: isActive ? Colors.blueAccent : Colors.grey[600], size: 22),
               if (!isCollapsed) ...[
                 const SizedBox(width: 16),
-                Text(label, style: TextStyle(color: isActive ? Colors.blueAccent : Colors.grey[700], fontWeight: isActive ? FontWeight.w600 : FontWeight.normal)),
+                Expanded(child: Text(label, style: TextStyle(color: isActive ? Colors.blueAccent : Colors.grey[700], fontWeight: isActive ? FontWeight.w600 : FontWeight.normal), overflow: TextOverflow.ellipsis)),
               ]
             ],
           ),

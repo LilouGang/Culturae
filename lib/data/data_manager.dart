@@ -25,6 +25,7 @@ class UserProfile {
   DateTime? createdAt;
   
   Map<String, int> scores; 
+  // Structure : { 'Histoire': { '2025-12-09': 10, '2025-12-08': 5 }, 'Maths': { ... } }
   Map<String, Map<String, int>> dailyActivity; 
 
   UserProfile({
@@ -41,23 +42,42 @@ class UserProfile {
   double get successRate => totalAnswers == 0 ? 0.0 : (totalCorrectAnswers / totalAnswers);
   bool get hasFakeEmail => email.endsWith("@noreply.culturek.com");
 
-  Map<DateTime, int> getLast7DaysActivity() {
-    Map<DateTime, int> result = {};
+  // --- NOUVELLE FONCTION POUR LE GRAPHIQUE EMPILLÉ ---
+  // Retourne : Map<Date, Map<Theme, Count>>
+  // Ex: { 09/12: {'Histoire': 5, 'Sport': 2}, 08/12: {'Histoire': 3} }
+  Map<DateTime, Map<String, int>> getLast7DaysStackedStats() {
+    Map<DateTime, Map<String, int>> result = {};
     DateTime now = DateTime.now();
+
+    // 1. Initialiser les 7 derniers jours avec des maps vides
     for (int i = 6; i >= 0; i--) {
       DateTime day = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
-      result[day] = 0;
+      result[day] = {};
     }
-    dailyActivity.forEach((theme, datesMap) {
+
+    // 2. Remplir avec les données réelles
+    dailyActivity.forEach((themeName, datesMap) {
       datesMap.forEach((dateString, count) {
         try {
-          List<String> parts = dateString.split('/');
+          // On gère les deux formats possibles (tirets ou slashs) pour éviter les bugs
+          List<String> parts = dateString.contains('/') ? dateString.split('/') : dateString.split('-');
+          
           if(parts.length == 3) {
             DateTime date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-            DateTime? key = result.keys.firstWhere((k) => k.year == date.year && k.month == date.month && k.day == date.day, orElse: () => DateTime(0));
-            if (key.year != 0) result[key] = (result[key] ?? 0) + count;
+            
+            // On cherche si cette date existe dans nos 7 jours affichés
+            // (On compare year/month/day pour ignorer les heures)
+            DateTime? key = result.keys.cast<DateTime?>().firstWhere(
+              (k) => k != null && k.year == date.year && k.month == date.month && k.day == date.day, 
+              orElse: () => null
+            );
+
+            if (key != null) {
+              // Si la date est trouvée, on ajoute le score du thème
+              result[key]![themeName] = (result[key]![themeName] ?? 0) + count;
+            }
           }
-        } catch (e) { debugPrint("Erreur parsing date stat: $e"); }
+        } catch (e) { debugPrint("Erreur parsing date stat ($dateString): $e"); }
       });
     });
     return result;
@@ -90,7 +110,6 @@ class DataManager with ChangeNotifier {
       final responses = await Future.wait([
         FirebaseFirestore.instance.collection('ThemesStyles').get(),
         FirebaseFirestore.instance.collection('SousThemesStyles').get(),
-        // CORRECTION : On fait un get() classique au lieu de count()
         FirebaseFirestore.instance.collection('Questions').get(), 
       ]);
 
@@ -102,7 +121,6 @@ class DataManager with ChangeNotifier {
           .map((doc) => SubThemeInfo.fromFirestore(doc.data() as Map<String, dynamic>))
           .toList()..sort((a, b) => a.name.compareTo(b.name));
       
-      // CORRECTION : On compte la taille de la liste reçue
       totalQuestionsInDb = (responses[2] as QuerySnapshot).size;
 
       if (FirebaseAuth.instance.currentUser != null) {
@@ -247,7 +265,9 @@ class DataManager with ChangeNotifier {
     } catch (e) { return []; }
   }
 
-  Future<void> addAnswer(bool isCorrect, String questionId, String answerText) async {
+  // --- SAUVEGARDE DES RÉPONSES ---
+  // J'ai ajouté le paramètre required 'themeName'
+  Future<void> addAnswer(bool isCorrect, String questionId, String answerText, String themeName) async {
     if (currentUser.id == "guest") {
       currentUser.totalAnswers++;
       if (isCorrect) currentUser.totalCorrectAnswers++;
@@ -256,21 +276,40 @@ class DataManager with ChangeNotifier {
       try {
         final userRef = FirebaseFirestore.instance.collection('Users').doc(currentUser.id);
         
+        // 1. Mise à jour des totaux
         await userRef.update({
           'totalAnswers': FieldValue.increment(1),
           'totalCorrectAnswers': FieldValue.increment(isCorrect ? 1 : 0),
         });
 
-        // CORRECTION 2 : On a supprimé la variable unused 'dateKey' pour l'instant
-        // Si tu veux réactiver la sauvegarde des stats quotidiennes, décommente ci-dessous :
-        /*
+        // 2. Mise à jour de l'activité quotidienne PAR THÈME
         final now = DateTime.now();
-        final dateKey = "${now.year}/${now.month.toString().padLeft(2,'0')}/${now.day.toString().padLeft(2,'0')}";
-        await userRef.update({ "dailyActivityByTheme.Global.$dateKey": FieldValue.increment(1) });
-        */
+        // Formatage strict yyyy-MM-dd pour éviter les soucis de tri
+        final dateKey = "${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}";
+        
+        // Utilisation de la notation par points pour cibler spécifiquement ce thème et cette date
+        try {
+          await userRef.update({
+             "dailyActivityByTheme.$themeName.$dateKey": FieldValue.increment(1) 
+          });
+        } catch(e) {
+          // Fallback si la structure n'existe pas : merge
+          await userRef.set({
+            "dailyActivityByTheme": {
+              themeName: { dateKey: FieldValue.increment(1) }
+            }
+          }, SetOptions(merge: true));
+        }
 
+        // 3. Mise à jour locale pour affichage instantané sans recharger
         currentUser.totalAnswers++;
         if (isCorrect) currentUser.totalCorrectAnswers++;
+        
+        // Update local du dailyActivity
+        Map<String, int> themeMap = currentUser.dailyActivity[themeName] ?? {};
+        themeMap[dateKey] = (themeMap[dateKey] ?? 0) + 1;
+        currentUser.dailyActivity[themeName] = themeMap;
+
         notifyListeners();
       } catch (e) {
         debugPrint("Erreur update User stats: $e");
