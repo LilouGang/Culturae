@@ -30,41 +30,56 @@ class UserProfile {
   String id;
   String username;
   String email;
-  int totalAnswers;
-  int totalCorrectAnswers;
   DateTime? createdAt;
   
-  Map<String, int> scores; 
-  Map<String, Map<String, int>> dailyActivity; 
+  // 1. VOLUME
+  int totalAnswers; 
 
-  // CHANGEMENT ICI : Le nom correspond maintenant à ton champ BDD
+  // 2. PROGRESSION
+  List<String> seenQuestionIds;
+
+  // 3. MAÎTRISE (Source de vérité)
   List<String> answeredQuestions;
+
+  // 4. CACHE SCORES (Pour affichage rapide des thèmes)
+  // Clé: "ThemeName" ou "ThemeName-SubThemeName" -> Valeur: Nombre de questions validées
+  Map<String, int> scores; 
+  
+  Map<String, Map<String, int>> dailyActivity; 
 
   UserProfile({
     this.id = "guest",
     this.username = "Invité",
     this.email = "",
     this.totalAnswers = 0,
-    this.totalCorrectAnswers = 0,
     this.createdAt,
-    this.scores = const {},
+    this.seenQuestionIds = const [],
+    this.answeredQuestions = const [],
+    this.scores = const {}, // Réintroduction du cache
     this.dailyActivity = const {},
-    this.answeredQuestions = const [], // CHANGEMENT ICI
   });
 
-  double get successRate => totalAnswers == 0 ? 0.0 : (totalCorrectAnswers / totalAnswers);
+  int get progressionCount => seenQuestionIds.length;
+
+  double get precision {
+    if (seenQuestionIds.isEmpty) return 0.0;
+    return answeredQuestions.length / seenQuestionIds.length;
+  }
+
+  double getCompletion(int totalDb) {
+    if (totalDb == 0) return 0.0;
+    return seenQuestionIds.length / totalDb;
+  }
+
   bool get hasFakeEmail => email.endsWith("@noreply.culturek.com");
 
-  // --- STATS EMPILLÉES ---
   Map<DateTime, Map<String, int>> getLast7DaysStackedStats() {
     Map<DateTime, Map<String, int>> result = {};
     DateTime now = DateTime.now();
-
     for (int i = 6; i >= 0; i--) {
       DateTime day = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
       result[day] = {};
     }
-
     dailyActivity.forEach((themeName, datesMap) {
       datesMap.forEach((dateString, count) {
         try {
@@ -83,12 +98,6 @@ class UserProfile {
       });
     });
     return result;
-  }
-
-  Map<String, String> getBestAndWorstThemes() {
-    if (scores.isEmpty) return {'best': '-', 'worst': '-'};
-    var sortedEntries = scores.entries.toList()..sort((a, b) => b.value.compareTo(a.value)); 
-    return {'best': sortedEntries.first.key, 'worst': sortedEntries.last.key};
   }
 }
 
@@ -183,42 +192,27 @@ class DataManager with ChangeNotifier {
   Future<void> signUp(String username, String email, String password) async {
     try {
       final String cleanUsername = username.trim();
-      
-      // 1. Vérification du pseudo
-      final usernameCheck = await FirebaseFirestore.instance
-          .collection('Users')
-          .where('username', isEqualTo: cleanUsername)
-          .limit(1)
-          .get();
+      final usernameCheck = await FirebaseFirestore.instance.collection('Users').where('username', isEqualTo: cleanUsername).limit(1).get();
+      if (usernameCheck.docs.isNotEmpty) throw FirebaseAuthException(code: 'username-already-in-use', message: "Ce pseudo est déjà pris.");
 
-      if (usernameCheck.docs.isNotEmpty) {
-        throw FirebaseAuthException(
-          code: 'username-already-in-use', 
-          message: "Ce pseudo est déjà pris, veuillez en choisir un autre."
-        );
-      }
-
-      // 2. Email
       String finalEmail = email.trim();
       if (finalEmail.isEmpty) {
         final cleanUsernameForEmail = cleanUsername.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
         finalEmail = "$cleanUsernameForEmail${DateTime.now().millisecondsSinceEpoch}@noreply.culturek.com";
       }
 
-      // 3. Auth
       UserCredential cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: finalEmail, password: password);
       
-      // 4. Firestore
       final newUser = UserProfile(id: cred.user!.uid, username: cleanUsername, email: finalEmail, createdAt: DateTime.now());
       
       await FirebaseFirestore.instance.collection('Users').doc(cred.user!.uid).set({
         'username': newUser.username, 
         'email': newUser.email, 
         'totalAnswers': 0, 
-        'totalCorrectAnswers': 0, 
         'createdAt': FieldValue.serverTimestamp(),
-        // CHANGEMENT ICI : Nom du champ 'answeredQuestions'
         'answeredQuestions': [],
+        'seenQuestionIds': [],
+        'scores': {}, // Initialisation du cache
       });
       
       currentUser = newUser;
@@ -264,20 +258,8 @@ class DataManager with ChangeNotifier {
     
     if (newUsername != null && newUsername != currentUser.username) {
       final String cleanNewUsername = newUsername.trim();
-
-      final usernameCheck = await FirebaseFirestore.instance
-          .collection('Users')
-          .where('username', isEqualTo: cleanNewUsername)
-          .limit(1)
-          .get();
-
-      if (usernameCheck.docs.isNotEmpty) {
-        throw FirebaseAuthException(
-          code: 'username-already-in-use', 
-          message: "Ce pseudo est déjà pris."
-        );
-      }
-
+      final usernameCheck = await FirebaseFirestore.instance.collection('Users').where('username', isEqualTo: cleanNewUsername).limit(1).get();
+      if (usernameCheck.docs.isNotEmpty) throw FirebaseAuthException(code: 'username-already-in-use', message: "Ce pseudo est déjà pris.");
       await FirebaseFirestore.instance.collection('Users').doc(uid).update({'username': cleanNewUsername});
       currentUser.username = cleanNewUsername;
     }
@@ -291,13 +273,14 @@ class DataManager with ChangeNotifier {
       DateTime? createdDate;
       if (data['createdAt'] != null && data['createdAt'] is Timestamp) createdDate = (data['createdAt'] as Timestamp).toDate();
       
+      // CHARGEMENT SCORES (Cache)
       Map<String, int> parsedScores = {};
       if (data['scores'] != null && data['scores'] is Map) {
         (data['scores'] as Map).forEach((k, v) {
-          if (v is Map && v['dynamicScore'] != null) {
-            parsedScores[k.toString()] = (v['dynamicScore'] as num).toInt();
-          } else if (v is num) {
+          if (v is num) {
             parsedScores[k.toString()] = v.toInt();
+          } else if (v is Map && v['dynamicScore'] != null) {
+            parsedScores[k.toString()] = (v['dynamicScore'] as num).toInt();
           }
         });
       }
@@ -315,14 +298,14 @@ class DataManager with ChangeNotifier {
         });
       }
 
-      // CHANGEMENT ICI : Récupération du champ 'answeredQuestions'
       List<String> loadedAnsweredIds = [];
       if (data['answeredQuestions'] != null) {
-        try {
-          loadedAnsweredIds = List<String>.from(data['answeredQuestions']);
-        } catch (e) {
-          debugPrint("Erreur conversion answeredQuestions: $e");
-        }
+        try { loadedAnsweredIds = List<String>.from(data['answeredQuestions']); } catch (e) { debugPrint("Err answeredQuestions: $e"); }
+      }
+
+      List<String> loadedSeenIds = [];
+      if (data['seenQuestionIds'] != null) {
+        try { loadedSeenIds = List<String>.from(data['seenQuestionIds']); } catch (e) { debugPrint("Err seenQuestionIds: $e"); }
       }
 
       currentUser = UserProfile(
@@ -330,11 +313,11 @@ class DataManager with ChangeNotifier {
         username: data['username'] ?? 'Utilisateur',
         email: data['email'] ?? '',
         totalAnswers: data['totalAnswers'] ?? 0,
-        totalCorrectAnswers: data['totalCorrectAnswers'] ?? 0,
         createdAt: createdDate,
-        scores: parsedScores,
+        scores: parsedScores, // <--- CACHE
         dailyActivity: parsedDaily,
-        answeredQuestions: loadedAnsweredIds, // CHANGEMENT ICI
+        answeredQuestions: loadedAnsweredIds,
+        seenQuestionIds: loadedSeenIds,
       );
     }
     notifyListeners();
@@ -342,21 +325,54 @@ class DataManager with ChangeNotifier {
 
   List<SubThemeInfo> getSubThemesFor(String themeName) => subThemes.where((st) => st.parentTheme == themeName).toList();
   
-  // --- SAUVEGARDE DES RÉPONSES ---
-  Future<void> addAnswer(bool isCorrect, String questionId, String answerText, String themeName) async {
-    // 1. LOCAL
+  // --- SAUVEGARDE DES RÉPONSES (AVEC MISE À JOUR DU CACHE SCORES) ---
+  Future<void> addAnswer(bool isCorrect, String questionId, String answerText, String themeName, [String? subThemeName]) async {
+    // 1. VOLUME
     currentUser.totalAnswers++;
-    if (isCorrect) currentUser.totalCorrectAnswers++;
+    
+    // 2. PROGRESSION (UNIQUE)
+    bool isNewDiscovery = false;
+    if (!currentUser.seenQuestionIds.contains(questionId)) {
+      currentUser.seenQuestionIds.add(questionId);
+      isNewDiscovery = true;
+    }
 
-    // CHANGEMENT ICI : Mise à jour locale de answeredQuestions
+    // 3. MAÎTRISE & CACHE
+    bool masteryStatusChanged = false;
+    int scoreModifier = 0; // +1 ou -1
+
     if (isCorrect) {
       if (!currentUser.answeredQuestions.contains(questionId)) {
         currentUser.answeredQuestions.add(questionId);
+        masteryStatusChanged = true;
+        scoreModifier = 1;
       }
     } else {
-      currentUser.answeredQuestions.remove(questionId);
+      if (currentUser.answeredQuestions.contains(questionId)) {
+        currentUser.answeredQuestions.remove(questionId);
+        masteryStatusChanged = true;
+        scoreModifier = -1;
+      }
     }
 
+    // Mise à jour LOCALE du Cache Score (Indispensable pour affichage immédiat)
+    if (masteryStatusChanged && scoreModifier != 0) {
+      // Score du Thème
+      currentUser.scores[themeName] = (currentUser.scores[themeName] ?? 0) + scoreModifier;
+      if (currentUser.scores[themeName]! < 0) currentUser.scores[themeName] = 0;
+
+      // Score du Sous-Thème (si fourni)
+      if (subThemeName != null) {
+        // Clé combinée pour éviter les conflits, ex: "Histoire-Antiquité"
+        // Mais ton code précédent utilisait juste "Antiquité" dans certaines vues.
+        // On va utiliser le nom du sous-thème directement comme clé si unique, ou le format composé.
+        // Pour être sûr, utilisons le nom du sous-thème comme clé simple comme dans ton affichage
+        currentUser.scores[subThemeName] = (currentUser.scores[subThemeName] ?? 0) + scoreModifier;
+        if (currentUser.scores[subThemeName]! < 0) currentUser.scores[subThemeName] = 0;
+      }
+    }
+
+    // 4. ACTIVITY
     final now = DateTime.now();
     final dateKey = "${now.year}-${now.month.toString().padLeft(2,'0')}-${now.day.toString().padLeft(2,'0')}";
     Map<String, int> themeMap = currentUser.dailyActivity[themeName] ?? {};
@@ -367,43 +383,48 @@ class DataManager with ChangeNotifier {
 
     if (currentUser.id == "guest") return;
 
-    // 2. FIREBASE USER
+    // --- MISE À JOUR FIREBASE ---
     try {
       final userRef = FirebaseFirestore.instance.collection('Users').doc(currentUser.id);
       
-      await userRef.update({
+      Map<String, dynamic> updates = {
         'totalAnswers': FieldValue.increment(1),
-        'totalCorrectAnswers': FieldValue.increment(isCorrect ? 1 : 0),
-      });
+      };
 
-      // CHANGEMENT ICI : Utilisation de 'answeredQuestions'
-      if (isCorrect) {
-        await userRef.update({
-          'answeredQuestions': FieldValue.arrayUnion([questionId])
-        });
-      } else {
-        await userRef.update({
-          'answeredQuestions': FieldValue.arrayRemove([questionId])
-        });
+      if (isNewDiscovery) {
+        updates['seenQuestionIds'] = FieldValue.arrayUnion([questionId]);
+      }
+
+      if (masteryStatusChanged) {
+        if (isCorrect) {
+          updates['answeredQuestions'] = FieldValue.arrayUnion([questionId]);
+        } else {
+          updates['answeredQuestions'] = FieldValue.arrayRemove([questionId]);
+        }
+        
+        // Mise à jour du cache dans Firestore
+        if (scoreModifier != 0) {
+          updates['scores.$themeName'] = FieldValue.increment(scoreModifier);
+          if (subThemeName != null) {
+             updates['scores.$subThemeName'] = FieldValue.increment(scoreModifier);
+          }
+        }
       }
 
       try {
-        await userRef.update({ 
-          "dailyActivityByTheme.$themeName.$dateKey": FieldValue.increment(1) 
-        });
+        updates["dailyActivityByTheme.$themeName.$dateKey"] = FieldValue.increment(1);
       } catch(e) {
         await userRef.set({ 
-          "dailyActivityByTheme": { 
-            themeName: { dateKey: FieldValue.increment(1) } 
-          } 
+          "dailyActivityByTheme": { themeName: { dateKey: FieldValue.increment(1) } } 
         }, SetOptions(merge: true));
       }
+
+      await userRef.update(updates);
 
     } catch (e) {
       debugPrint("Erreur update User stats: $e");
     }
 
-    // 3. FIREBASE QUESTION (Inchangé)
     if (questionId.isNotEmpty) {
       try {
         final qRef = FirebaseFirestore.instance.collection('Questions').doc(questionId);
@@ -418,14 +439,11 @@ class DataManager with ChangeNotifier {
     }
   }
 
-  // --- DANS DATA_MANAGER.DART ---
-
-  // Nouvelle méthode de signalement détaillé
   // --- SIGNALEMENTS ---
   Future<void> reportQuestionDetailed({
     required String questionId,
     required String question,
-    required String propositions, // String (un seul bloc)
+    required String propositions,
     required String explanation,
   }) async {
     try {
@@ -437,6 +455,7 @@ class DataManager with ChangeNotifier {
         'suggestedPropositions': propositions,
         'suggestedExplanation': explanation,
         'timestamp': FieldValue.serverTimestamp(),
+        'status': 'pending',
       });
     } catch (e) {
       debugPrint("Erreur signalement détaillé : $e");

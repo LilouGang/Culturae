@@ -148,11 +148,14 @@ class _MainLayoutState extends State<MainLayout> {
     return Consumer<DataManager>(
       builder: (context, dataManager, child) {
         final user = dataManager.currentUser;
-        // Calcul du niveau actuel
-        final int level = (user.totalCorrectAnswers / 50).floor() + 1;
-        // Calcul de la progression vers le prochain niveau (reste de la division par 50)
-        final int progressTowardsNext = user.totalCorrectAnswers % 50;
-        // Pourcentage pour la barre (entre 0.0 et 1.0)
+        
+        // MODIFICATION ICI : On utilise la taille de la liste des questions maîtrisées
+        final int currentScore = user.answeredQuestions.length; 
+
+        // Calcul du niveau (1 niveau tous les 50 points)
+        final int level = (currentScore / 50).floor() + 1;
+        // Progression vers le prochain niveau
+        final int progressTowardsNext = currentScore % 50;
         final double progressPercent = progressTowardsNext / 50.0;
 
         return InkWell(
@@ -184,26 +187,23 @@ class _MainLayoutState extends State<MainLayout> {
                         
                         const SizedBox(height: 4),
                         
-                        // CORRECTION 2 : Ligne Niveau + Progression texte
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                             Text("Niveau $level", style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade500, fontWeight: FontWeight.w600)),
-                             // Affichage discret genre "12/50"
-                             Text("$progressTowardsNext/50", style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade300, fontWeight: FontWeight.w500)),
+                            Text("Niveau $level", style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade500, fontWeight: FontWeight.w600)),
+                            Text("$progressTowardsNext/50", style: TextStyle(fontSize: 10, color: Colors.blueGrey.shade300, fontWeight: FontWeight.w500)),
                           ],
                         ),
                         
                         const SizedBox(height: 6),
 
-                        // CORRECTION 2 : Barre de progression
                         ClipRRect(
                           borderRadius: BorderRadius.circular(2),
                           child: LinearProgressIndicator(
                             value: progressPercent,
-                            minHeight: 4, // Trait fin
+                            minHeight: 4,
                             backgroundColor: Colors.grey.shade200,
-                            valueColor: const AlwaysStoppedAnimation(Color(0xFF6366F1)), // Couleur du thème
+                            valueColor: const AlwaysStoppedAnimation(Color(0xFF6366F1)),
                           ),
                         ),
                       ],

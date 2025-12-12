@@ -9,34 +9,42 @@ class ProfilPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Écoute les changements d'utilisateur en temps réel
     final user = context.watch<DataManager>().currentUser;
     final isGuest = user.id == "guest";
 
     return Scaffold(
-      body: BackgroundPattern( // <--- ON ENTOURE ICI
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1100),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 600),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.05),
-                      end: Offset.zero,
-                    ).animate(animation),
-                    child: child,
-                  ),
-                );
-              },
-              child: isGuest
-                  ? const GuestView(key: ValueKey('Guest'))
-                  : const UserView(key: ValueKey('User')),
+      body: BackgroundPattern(
+        // 1. Le ScrollView est ICI (juste après le fond)
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          child: Container(
+            // 2. On prend toute la largeur
+            width: double.infinity,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 40), // Marge verticale pour le scroll
+            
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 600),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.05),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  );
+                },
+                child: isGuest
+                    ? const GuestView(key: ValueKey('Guest'))
+                    : const UserView(key: ValueKey('User')),
+              ),
             ),
           ),
         ),

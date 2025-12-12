@@ -70,29 +70,47 @@ class _StatsPageState extends State<StatsPage> {
 
     final user = DataManager.instance.currentUser;
 
-    // --- VUE INVITÉ (MODIFIÉE) ---
+    // --- VUE INVITÉ ---
     if (user.id == 'guest') {
       return _GuestStatsView(onGoToLogin: widget.onGoToLogin);
     }
 
-    // --- DASHBOARD CONNECTÉ ---
+    // --- DASHBOARD CONNECTÉ (LOGIQUE MISE À JOUR) ---
     final totalQuestionsDb = DataManager.instance.totalQuestionsInDb > 0 ? DataManager.instance.totalQuestionsInDb : 1;
-    final int questionsVues = user.totalAnswers;
-    double completionPercent = (questionsVues / totalQuestionsDb) * 100;
+    
+    // 1. VOLUME (Compteur bête et méchant)
+    final int volumeReponses = user.totalAnswers;
+
+    // 2. PROGRESSION (Questions uniques découvertes)
+    final int questionsUniquesVues = user.seenQuestionIds.length;
+    
+    // 3. COMPLÉTION (% de la base de données découverte)
+    double completionPercent = (questionsUniquesVues / totalQuestionsDb) * 100;
     if (completionPercent > 100) completionPercent = 100;
-    double accuracyPercent = user.totalAnswers > 0 ? (user.totalCorrectAnswers / user.totalAnswers) * 100 : 0.0;
+
+    // 4. PRÉCISION (Maîtrise / Découverte)
+    // Combien de questions je maîtrise PARMI celles que j'ai vues ?
+    double accuracyPercent = 0.0;
+    if (questionsUniquesVues > 0) {
+      accuracyPercent = (user.answeredQuestions.length / questionsUniquesVues) * 100;
+    }
 
     final activityData = user.getLast7DaysStackedStats();
     final insights = _calculateInsights();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1100),
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 60.0),
+      // 1. Le ScrollView est maintenant LE PARENT PRINCIPAL
+      body: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        child: Container(
+          // 2. On force la largeur à l'infini pour que les côtés vides soient scrollables
+          width: double.infinity,
+          alignment: Alignment.center, // Remplace le widget Center
+          padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 60.0),
+          
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -118,10 +136,35 @@ class _StatsPageState extends State<StatsPage> {
                     return GridView.count(
                       crossAxisCount: columns, crossAxisSpacing: 24, mainAxisSpacing: 24, shrinkWrap: true, childAspectRatio: ratio, physics: const NeverScrollableScrollPhysics(),
                       children: [
-                        _StaggeredReveal(delay: 1, child: StatCard(title: "Progression", value: "$questionsVues", suffix: "/ $totalQuestionsDb", description: "Questions vues.", icon: Icons.auto_graph_rounded, color: const Color(0xFF6366F1))),
-                        _StaggeredReveal(delay: 2, child: StatCard(title: "Complétion", value: "${completionPercent.toStringAsFixed(1)}%", description: "Contenu exploré.", icon: Icons.pie_chart_rounded, color: const Color(0xFFEC4899))),
-                        _StaggeredReveal(delay: 3, child: StatCard(title: "Volume", value: "${user.totalAnswers}", description: "Réponses données.", icon: Icons.layers_rounded, color: const Color(0xFF8B5CF6))),
-                        _StaggeredReveal(delay: 4, child: StatCard(title: "Précision", value: "${accuracyPercent.toStringAsFixed(1)}%", description: "Bonnes réponses.", icon: Icons.verified_rounded, color: const Color(0xFF10B981))),
+                        _StaggeredReveal(delay: 1, child: StatCard(
+                          title: "Progression", 
+                          value: "$questionsUniquesVues", // Utilise seenQuestionIds.length
+                          suffix: "/ $totalQuestionsDb", 
+                          description: "Questions uniques.", // Texte mis à jour
+                          icon: Icons.auto_graph_rounded, 
+                          color: const Color(0xFF6366F1)
+                        )),
+                        _StaggeredReveal(delay: 2, child: StatCard(
+                          title: "Complétion", 
+                          value: "${completionPercent.toStringAsFixed(1)}%", 
+                          description: "Contenu exploré.", 
+                          icon: Icons.pie_chart_rounded, 
+                          color: const Color(0xFFEC4899)
+                        )),
+                        _StaggeredReveal(delay: 3, child: StatCard(
+                          title: "Volume", 
+                          value: "$volumeReponses", // Utilise totalAnswers
+                          description: "Total clics.", 
+                          icon: Icons.layers_rounded, 
+                          color: const Color(0xFF8B5CF6)
+                        )),
+                        _StaggeredReveal(delay: 4, child: StatCard(
+                          title: "Maîtrise", // Renommé de Précision à Maîtrise pour être plus clair
+                          value: "${accuracyPercent.toStringAsFixed(1)}%", 
+                          description: "Acquis / Vus.", 
+                          icon: Icons.verified_rounded, 
+                          color: const Color(0xFF10B981)
+                        )),
                       ],
                     );
                 }),

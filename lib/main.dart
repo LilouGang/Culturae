@@ -31,7 +31,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'CultureK Web',
+      title: 'CultureK',
+      scrollBehavior: NoThumbScrollBehavior().copyWith(scrollbars: false),
       theme: ThemeData(
         useMaterial3: true,
         primarySwatch: Colors.blue,
@@ -39,5 +40,20 @@ class MyApp extends StatelessWidget {
       ),
       home: const MainLayout(),
     );
+  }
+}
+
+class NoThumbScrollBehavior extends ScrollBehavior {
+  @override
+  Widget buildOverscrollIndicator(BuildContext context, Widget child, ScrollableDetails details) {
+    return child;
+  }
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) => const BouncingScrollPhysics();
+  
+  // C'est cette ligne qui cache la barre partout
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    return child;
   }
 }

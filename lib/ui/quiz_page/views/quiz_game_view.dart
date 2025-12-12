@@ -67,7 +67,7 @@ class _QuizGameViewState extends State<QuizGameView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
+            _scrollController.position.maxScrollExtent - 100,
             duration: const Duration(milliseconds: 1000),
             curve: Curves.easeOutQuart,
           );
@@ -121,10 +121,14 @@ class _QuizGameViewState extends State<QuizGameView> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Color(0xFFF8FAFC),
       body: Stack(
         children: [
-          Positioned.fill(child: CustomPaint(painter: _QuizPatternPainter())),
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _QuizPatternPainter(),
+            ),
+          ),
           Positioned.fill(
             child: ScrollConfiguration(
               behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
@@ -447,30 +451,57 @@ class _EditorTextField extends StatelessWidget {
   }
 }
 
-// --- FOND GÉOMÉTRIQUE (Inchangé) ---
 class _QuizPatternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final Paint paintStroke = Paint()..color = Colors.blueGrey.withOpacity(0.1)..strokeWidth = 1.0..style = PaintingStyle.stroke;
-    final Paint paintFill = Paint()..color = Colors.blueGrey.withOpacity(0.1)..style = PaintingStyle.fill;
-    const double gridSize = 60.0;
+    final Paint paintStroke = Paint()
+      ..color = Colors.blueGrey.withOpacity(0.2)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+
+    final Paint paintFill = Paint()
+      ..color = Colors.blueGrey.withOpacity(0.2)
+      ..style = PaintingStyle.fill;
+
+    const double gridSize = 50.0;
+
     final int cols = (size.width / gridSize).ceil();
     final int rows = (size.height / gridSize).ceil();
+
     for (int i = 0; i < cols; i++) {
       for (int j = 0; j < rows; j++) {
         final double x = i * gridSize;
         final double y = j * gridSize;
         final Offset center = Offset(x + gridSize / 2, y + gridSize / 2);
+
         final int hash = ((i * 13) ^ (j * 7) + (i * j)).abs();
-        final int shapeType = hash % 12;
+        final int shapeType = hash % 7; 
+
         switch (shapeType) {
-          case 0: canvas.drawCircle(center, 2.0, paintFill); break;
-          case 1: canvas.drawCircle(center, 4.0, paintStroke); break;
-          default: break;
+          case 0: 
+          case 1: 
+            const double s = 4.0;
+            canvas.drawLine(center.translate(-s, 0), center.translate(s, 0), paintStroke);
+            canvas.drawLine(center.translate(0, -s), center.translate(0, s), paintStroke);
+            break;
+          case 2:
+          case 3:
+            canvas.drawCircle(center, 1.5, paintFill);
+            break;
+          case 4:
+            canvas.drawCircle(center, 3.0, paintStroke);
+            break;
+          case 5:
+            const double s = 3.0;
+            canvas.drawLine(center.translate(-s, s), center.translate(s, -s), paintStroke);
+            break;
+          default:
+            break;
         }
       }
     }
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
@@ -577,7 +608,7 @@ class _QuizResultView extends StatelessWidget {
 
     return Center(
       child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
+        physics: const NeverScrollableScrollPhysics(),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 450),
           child: Padding(
