@@ -60,7 +60,7 @@ class UserProfile {
     return seenQuestionIds.length / totalDb;
   }
 
-  bool get hasFakeEmail => email.endsWith("@noreply.culturek.com");
+  bool get hasFakeEmail => email.endsWith("@noreply.culturae.com");
 
   Map<DateTime, Map<String, int>> getLast7DaysStackedStats() {
     Map<DateTime, Map<String, int>> result = {};
@@ -185,7 +185,7 @@ class DataManager with ChangeNotifier {
       String finalEmail = email.trim();
       if (finalEmail.isEmpty) {
         final cleanUsernameForEmail = cleanUsername.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
-        finalEmail = "$cleanUsernameForEmail${DateTime.now().millisecondsSinceEpoch}@noreply.culturek.com";
+        finalEmail = "$cleanUsernameForEmail${DateTime.now().millisecondsSinceEpoch}@noreply.culturae.com";
       }
 
       UserCredential cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: finalEmail, password: password);
@@ -215,7 +215,7 @@ class DataManager with ChangeNotifier {
         if (query.docs.isEmpty) throw FirebaseAuthException(code: 'user-not-found', message: "Pseudo introuvable.");
         emailToUse = query.docs.first.get('email');
       }
-      if (emailToUse.endsWith("@noreply.culturek.com")) throw FirebaseAuthException(code: 'no-email-linked', message: "Ce compte n'a pas d'email valide.");
+      if (emailToUse.endsWith("@noreply.culturae.com")) throw FirebaseAuthException(code: 'no-email-linked', message: "Ce compte n'a pas d'email valide.");
       await FirebaseAuth.instance.sendPasswordResetEmail(email: emailToUse);
     } catch (e) { rethrow; }
   }

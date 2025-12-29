@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'CultureK',
+      title: 'Culturæ',
       scrollBehavior: NoThumbScrollBehavior().copyWith(scrollbars: false),
       theme: ThemeData(
         useMaterial3: true,

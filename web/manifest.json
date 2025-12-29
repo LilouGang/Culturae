@@ -1,11 +1,11 @@
 {
-    "name": "culturek",
-    "short_name": "culturek",
+    "name": "culturæ",
+    "short_name": "culturæ",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Culturæ, l'application de culture générale pour apprendre rapidement, tester ses connaissances et nourrir sa curiosité.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

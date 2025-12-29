@@ -1,4 +1,5 @@
 {
+  "name": "culturae",
   "dependencies": {
     "firebase-functions": "^7.0.1"
   }

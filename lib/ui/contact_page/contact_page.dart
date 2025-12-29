@@ -107,7 +107,7 @@ class ContactPage extends StatelessWidget {
                     _StaggeredReveal(
                       delay: 4,
                       child: Text(
-                        "© 2025 CultureK • Développé avec Flutter",
+                        "© 2025 Culturæ • Développé avec Flutter",
                         style: TextStyle(
                           color: Colors.blueGrey.shade300, 
                           fontSize: 11,
