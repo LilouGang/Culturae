@@ -124,7 +124,7 @@ class _MainLayoutState extends State<MainLayout> {
               children: [
                 Icon(Icons.flash_on_rounded, color: Color(0xFF6366F1), size: 28),
                 SizedBox(width: 8),
-                Text("Culturæ", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: Color(0xFF1E293B), letterSpacing: -0.5)),
+                Text("Culturæ", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: Color(0xFF1E293B), letterSpacing: 0.5)),
               ],
             ),
           IconButton(
