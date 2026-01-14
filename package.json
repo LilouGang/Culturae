@@ -1,6 +1,7 @@
 {
   "name": "culturae",
   "dependencies": {
+    "@vercel/analytics": "^1.6.1",
     "firebase-functions": "^7.0.1"
   }
 }
